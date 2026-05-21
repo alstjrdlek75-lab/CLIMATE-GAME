@@ -517,7 +517,7 @@ function spawnItems(data, isRound2){
     document.getElementById('vr').textContent=items.length;
 }
 
-/* ══ 드래그 (네이티브 마우스) ══ */
+/* ══ 드래그 (마우스 + 터치 공통) ══ */
 function zoneAt(px,py){
     for(const z of zoneEls){
         const r=z.getBoundingClientRect();
@@ -527,44 +527,83 @@ function zoneAt(px,py){
 }
 function highlight(z){ zoneEls.forEach(el=>el.classList.toggle('hover',el===z)); }
 
-document.addEventListener('mousedown',e=>{
-    if(e.button!==0||transitioning) return;
-    const el=e.target.closest('.item');
-    if(!el) return;
+function startDrag(el, clientX, clientY){
+    if(transitioning) return false;
     const it=items.find(i=>i.el===el);
-    if(!it) return;
-    e.preventDefault();
+    if(!it) return false;
     Body.setStatic(it.body,true);
     Body.setVelocity(it.body,{x:0,y:0});
     Body.setAngularVelocity(it.body,0);
-    drag={item:it, ox:e.clientX-it.body.position.x, oy:e.clientY-it.body.position.y};
+    drag={item:it, ox:clientX-it.body.position.x, oy:clientY-it.body.position.y};
     el.classList.add('dragging');
-},{passive:false});
-
-document.addEventListener('mousemove',e=>{
+    return true;
+}
+function moveDrag(clientX, clientY){
     if(!drag) return;
-    Body.setPosition(drag.item.body,{x:e.clientX-drag.ox, y:e.clientY-drag.oy});
-    highlight(zoneAt(e.clientX,e.clientY));
-});
-
-document.addEventListener('mouseup',e=>{
+    Body.setPosition(drag.item.body,{x:clientX-drag.ox, y:clientY-drag.oy});
+    highlight(zoneAt(clientX,clientY));
+}
+function endDrag(clientX, clientY){
     if(!drag) return;
     const {item}=drag; drag=null;
     item.el.classList.remove('dragging');
     highlight(null);
-    const over=zoneAt(e.clientX,e.clientY);
+    const over=zoneAt(clientX,clientY);
     if(over) handleDrop(item,over);
     else{ Body.setStatic(item.body,false); Body.setVelocity(item.body,{x:(Math.random()-.5)*4,y:(Math.random()-.5)*4}); }
-});
-
-document.addEventListener('mouseleave',()=>{
+}
+function cancelDrag(){
     if(!drag) return;
     const {item}=drag; drag=null;
     item.el.classList.remove('dragging');
     highlight(null);
     Body.setStatic(item.body,false);
     Body.setVelocity(item.body,{x:(Math.random()-.5)*3,y:(Math.random()-.5)*3});
+}
+
+/* 마우스 */
+document.addEventListener('mousedown',e=>{
+    if(e.button!==0) return;
+    const el=e.target.closest('.item');
+    if(!el) return;
+    e.preventDefault();
+    startDrag(el, e.clientX, e.clientY);
+},{passive:false});
+
+document.addEventListener('mousemove',e=>{
+    moveDrag(e.clientX, e.clientY);
 });
+
+document.addEventListener('mouseup',e=>{
+    endDrag(e.clientX, e.clientY);
+});
+
+document.addEventListener('mouseleave',()=>{ cancelDrag(); });
+
+/* 터치 (iPad / 모바일) */
+document.addEventListener('touchstart',e=>{
+    if(e.touches.length!==1) return;
+    const t=e.touches[0];
+    const el=document.elementFromPoint(t.clientX,t.clientY)?.closest('.item');
+    if(!el) return;
+    if(startDrag(el, t.clientX, t.clientY)) e.preventDefault();
+},{passive:false});
+
+document.addEventListener('touchmove',e=>{
+    if(!drag||e.touches.length!==1) return;
+    e.preventDefault();
+    const t=e.touches[0];
+    moveDrag(t.clientX, t.clientY);
+},{passive:false});
+
+document.addEventListener('touchend',e=>{
+    if(!drag) return;
+    e.preventDefault();
+    const t=e.changedTouches[0];
+    endDrag(t.clientX, t.clientY);
+},{passive:false});
+
+document.addEventListener('touchcancel',()=>{ cancelDrag(); });
 
 /* ══ 드롭 처리 ══ */
 function handleDrop(item, zoneEl){
